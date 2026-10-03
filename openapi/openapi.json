@@ -1,0 +1,644 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "My Sky Labs Engine API",
+    "version": "0.2.0",
+    "description": "Публичный API расчётов My Sky Labs.\nИспользуется сайтом и внешними прогонами (API key).\nИсходники движка не входят в контракт и не отдаются клиенту.\nПри отсутствии локальной связки с private package ответы расчётных путей —\nчестный stub/unavailable (никогда не advanced).\n"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8787",
+      "description": "Local"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Liveness",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "engineLinked": {
+                      "type": "string",
+                      "enum": [
+                        "true",
+                        "false"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/version": {
+      "get": {
+        "summary": "Build info",
+        "operationId": "version",
+        "responses": {
+          "200": {
+            "description": "Version",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/moon": {
+      "get": {
+        "summary": "Moon details (full tabular astronomical data)",
+        "operationId": "moonDetails",
+        "description": "Returns complete moon table: local/UTC offset metadata, LST, topocentric\naltitude/azimuth/distance/angular diameter, daily events (rise/zenith/set/nadir/culmination),\nphase, tropical zodiac and IAU constellation. Event instants are ISO-8601 UTC;\nlocal and AM/PM rendering is client-side via `tz` (IANA).\n",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/lat"
+          },
+          {
+            "$ref": "#/components/parameters/lon"
+          },
+          {
+            "$ref": "#/components/parameters/heightM"
+          },
+          {
+            "$ref": "#/components/parameters/datetime"
+          },
+          {
+            "$ref": "#/components/parameters/tz"
+          },
+          {
+            "$ref": "#/components/parameters/zodiac"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Moon payload with `data.time`, `data.position` (incl. geo/parallax), `data.events`, `data.phase`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid datetime, observer, or unknown IANA time zone"
+          }
+        }
+      }
+    },
+    "/v1/moon/state": {
+      "get": {
+        "summary": "Compact moon state for 3D frame",
+        "operationId": "moonState",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/lat"
+          },
+          {
+            "$ref": "#/components/parameters/lon"
+          },
+          {
+            "$ref": "#/components/parameters/heightM"
+          },
+          {
+            "$ref": "#/components/parameters/datetime"
+          },
+          {
+            "$ref": "#/components/parameters/tz"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Compact 3D frame — illuminatedFraction, phaseAngleDeg, libration lon/lat, texture/light rolls, light direction, optical subsolar lon/lat (phase terminator), altitude/azimuth, aboveHorizon. Requires the approved calculation module; otherwise stub/unavailable (never claims advanced).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid datetime or observer"
+          }
+        }
+      }
+    },
+    "/v1/eclipses/search": {
+      "get": {
+        "summary": "Search eclipses",
+        "operationId": "eclipseSearch",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "YYYY-MM-DD or ISO-8601 datetime (UTC day bound).\nAllowed civil years: 1…2999 CE only (BCE and after 2999 rejected for now).\n"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Same bounds as `from` (1…2999 CE)."
+            }
+          },
+          {
+            "$ref": "#/components/parameters/lat"
+          },
+          {
+            "$ref": "#/components/parameters/lon"
+          },
+          {
+            "name": "engine",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "advanced",
+                "full",
+                "espenak-full",
+                "basic",
+                "nasa"
+              ],
+              "default": "advanced"
+            },
+            "description": "`advanced` keeps the catalog search, window ≤ 50 years.\n`full` / `espenak-full` polishes that catalog with Espenak Full and rejects\na window longer than 1 year. Named P1/U1 contacts are not returned.\nWithout the private package, meta.status is unavailable/stub.\n"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid window, engine, window longer than 50 years, or years outside 1…2999 CE\n(BCE / after 2999 not validated yet).\nClients may cover 1…2999 CE via stepwise calls (each window ≤ 50 years).\n`engine=full` additionally rejects any window longer than 1 year.\n"
+          }
+        }
+      }
+    },
+    "/v1/eclipses/refine": {
+      "post": {
+        "summary": "Refine one Advanced eclipse with Espenak Full",
+        "operationId": "eclipseRefine",
+        "description": "Polishes a single catalog event. Does not search a date window and does not\nreturn named P1/U1 contacts. The body is the eclipse summary already shown\non the card.\n",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "body",
+                  "type",
+                  "peakUTC"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "body": {
+                    "type": "string",
+                    "enum": [
+                      "solar",
+                      "lunar"
+                    ]
+                  },
+                  "type": {
+                    "type": "string"
+                  },
+                  "typeRu": {
+                    "type": "string"
+                  },
+                  "peakUTC": {
+                    "type": "string"
+                  },
+                  "startUTC": {
+                    "type": "string"
+                  },
+                  "endUTC": {
+                    "type": "string"
+                  },
+                  "gamma": {
+                    "type": "number"
+                  },
+                  "magnitude": {
+                    "type": "number"
+                  },
+                  "sarosNumber": {
+                    "type": "integer"
+                  },
+                  "sarosMember": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Refined eclipse summary, meta.engine = Espenak Full",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid peak instant"
+          },
+          "503": {
+            "description": "Engine package is not linked"
+          }
+        }
+      }
+    },
+    "/v1/eclipses/{id}": {
+      "get": {
+        "summary": "Eclipse by public id",
+        "operationId": "eclipseById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "SE2026Feb17A"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Eclipse summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          }
+        }
+      }
+    },
+    "/v1/terminator": {
+      "get": {
+        "summary": "Day/night terminator polyline",
+        "operationId": "terminator",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/datetime"
+          },
+          {
+            "name": "step_deg",
+            "in": "query",
+            "schema": {
+              "type": "number",
+              "default": 2,
+              "minimum": 0.5,
+              "maximum": 5
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Terminator points (lat/lon), subsolar position",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid datetime"
+          }
+        }
+      }
+    },
+    "/v1/engine/run": {
+      "post": {
+        "summary": "Single engine run for external harness",
+        "operationId": "engineRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/apiKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EngineRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid mode/datetime/engine"
+          },
+          "429": {
+            "description": "Rate limited"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "lat": {
+        "name": "lat",
+        "in": "query",
+        "schema": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        }
+      },
+      "lon": {
+        "name": "lon",
+        "in": "query",
+        "schema": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        }
+      },
+      "heightM": {
+        "name": "height_m",
+        "in": "query",
+        "schema": {
+          "type": "number",
+          "default": 0
+        }
+      },
+      "datetime": {
+        "name": "datetime",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "description": "ISO-8601 with timezone. Invalid value → 400 (no silent fallback to now)."
+      },
+      "tz": {
+        "name": "tz",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "example": "Europe/Moscow"
+        },
+        "description": "Optional IANA time zone for observer calendar context."
+      },
+      "zodiac": {
+        "name": "zodiac",
+        "in": "query",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "tropical",
+            "sidereal"
+          ],
+          "default": "tropical"
+        },
+        "description": "Zodiac sign system for /v1/moon (no help-sheet; plain UI line)."
+      },
+      "apiKey": {
+        "name": "X-API-Key",
+        "in": "header",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "schemas": {
+      "Version": {
+        "type": "object",
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "engineBuild": {
+            "type": "string"
+          },
+          "engineLinked": {
+            "type": "string"
+          },
+          "integrationStatus": {
+            "type": "string"
+          },
+          "advancedVersion": {
+            "type": "string"
+          },
+          "sourceCommit": {
+            "type": "string",
+            "description": "Approved source commit id (not a private filesystem path)."
+          },
+          "gitSha": {
+            "type": "string"
+          }
+        }
+      },
+      "EngineBuildInfo": {
+        "type": "object",
+        "required": [
+          "packageVersion",
+          "sourceCommit"
+        ],
+        "properties": {
+          "packageVersion": {
+            "type": "string"
+          },
+          "sourceCommit": {
+            "type": "string"
+          }
+        }
+      },
+      "ApiMeta": {
+        "type": "object",
+        "required": [
+          "engine",
+          "engineVersion",
+          "engineBuild",
+          "module",
+          "config",
+          "build",
+          "timeScale",
+          "calculatedAt",
+          "status",
+          "requestId",
+          "tookMs"
+        ],
+        "properties": {
+          "engine": {
+            "type": "string",
+            "description": "Calculation engine label from server facade, or `stub` when unlinked."
+          },
+          "engineVersion": {
+            "type": "string",
+            "description": "Independent module version (e.g. Advanced 2.0.0); `stub` when unlinked."
+          },
+          "engineBuild": {
+            "type": "string"
+          },
+          "module": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "build": {
+            "$ref": "#/components/schemas/EngineBuildInfo"
+          },
+          "timeScale": {
+            "type": "string",
+            "enum": [
+              "UTC",
+              "UT1",
+              "TT",
+              "utc"
+            ]
+          },
+          "calculatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "partial",
+              "unavailable",
+              "stub"
+            ]
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "tookMs": {
+            "type": "number"
+          }
+        }
+      },
+      "ApiEnvelope": {
+        "type": "object",
+        "required": [
+          "meta",
+          "data"
+        ],
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/ApiMeta"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "EngineRunRequest": {
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "eclipse_at",
+              "moon_at",
+              "ping"
+            ]
+          },
+          "datetime": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "observer": {
+            "type": "object",
+            "properties": {
+              "lat": {
+                "type": "number"
+              },
+              "lon": {
+                "type": "number"
+              },
+              "height_m": {
+                "type": "number"
+              }
+            }
+          },
+          "engine": {
+            "type": "string",
+            "enum": [
+              "advanced",
+              "basic",
+              "nasa"
+            ],
+            "default": "advanced"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}
